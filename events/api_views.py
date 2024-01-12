@@ -1,9 +1,60 @@
 from django.http import JsonResponse
 
-from .models import Conference, Location
+from .models import Conference, Location, State
+
+from django.views.decorators.http import require_http_methods
+import json
+from common.json import ModelEncoder
 
 
-def api_list_conferences(request):
+class LocationListEncoder(ModelEncoder):
+    model = Location
+    properties = ["name"]
+
+
+class LocationDetailEncoder(ModelEncoder):
+    model = Location
+    properties = [
+        "name",
+        "city",
+        "room_count",
+        "created",
+        "updated",
+        "state",
+    ]
+
+    def encode(self, obj):
+        data = super(LocationDetailEncoder, self).encode(obj)
+        # Assuming 'state' is a ForeignKey to a State model, modify as needed.
+        data['state'] = obj.state.abbreviation if obj.state else None
+        return data
+    
+
+class ConferenceListEncoder(ModelEncoder):
+    model = Conference
+    properties = ["name"]
+
+
+class ConferenceDetailEncoder(ModelEncoder):
+    model = Conference
+    properties = [
+        "name",
+        "description",
+        "max_presentations",
+        "max_attendees",
+        "starts",
+        "ends",
+        "created",
+        "updated",
+        "location",
+    ]
+    encoders = {
+        "location": LocationListEncoder(),
+    }
+
+
+
+# def api_list_conferences(request):
     """
     Lists the conference names and the link to the conference.
 
@@ -22,19 +73,37 @@ def api_list_conferences(request):
         ]
     }
     """
-    response = []
-    conferences = Conference.objects.all()
-    for conference in conferences:
-        response.append(
-            {
-                "name": conference.name,
-                "href": conference.get_api_url(),
-            }
+@require_http_methods(["GET", "POST"])
+def api_list_conferences(request):
+    if request.method == "GET":
+        conferences = Conference.objects.all()
+        return JsonResponse(
+            {"conferences": conferences},
+            encoder=ConferenceListEncoder,
+            safe=False,
         )
-    return JsonResponse({"conferences": response})
+    else:  # POST
+        content = json.loads(request.body)
+        try:
+            location = Location.objects.get(id=content["location"])
+            content["location"] = location
+        except Location.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid location id"},
+                status=400,
+            )
+
+        conference = Conference.objects.create(**content)
+        return JsonResponse(
+            conference,
+            encoder=ConferenceDetailEncoder,
+            safe=False,
+        )
+    
 
 
-def api_show_conference(request, id):
+
+# def api_show_conference(request, id):
     """
     Returns the details for the Conference model specified
     by the id parameter.
@@ -59,26 +128,43 @@ def api_show_conference(request, id):
         }
     }
     """
-    conference = Conference.objects.get(id=id)
-    return JsonResponse(
-        {
-            "name": conference.name,
-            "starts": conference.starts,
-            "ends": conference.ends,
-            "description": conference.description,
-            "created": conference.created,
-            "updated": conference.updated,
-            "max_presentations": conference.max_presentations,
-            "max_attendees": conference.max_attendees,
-            "location": {
-                "name": conference.location.name,
-                "href": conference.location.get_api_url(),
-            },
-        }
-    )
 
 
-def api_list_locations(request):
+@require_http_methods(["GET", "PUT", "DELETE"])
+def api_show_conference(request, id):
+    try:
+        conference = Conference.objects.get(id=id)
+    except Conference.DoesNotExist:
+        return JsonResponse({"message": "Conference not found"}, status=404)
+
+    if request.method == "GET":
+        return JsonResponse(conference, encoder=ConferenceDetailEncoder, safe=False)
+
+    elif request.method == "PUT":
+        content = json.loads(request.body)
+        if "location" in content:
+            try:
+                location = Location.objects.get(id=content["location"])
+                content["location"] = location
+            except Location.DoesNotExist:
+                return JsonResponse({"message": "Invalid location id"}, status=400)
+        
+        for key, value in content.items():
+            setattr(conference, key, value)
+        conference.save()
+        return JsonResponse(conference, encoder=ConferenceDetailEncoder, safe=False)
+
+    elif request.method == "DELETE":
+        conference.delete()
+        return JsonResponse({"deleted": True})
+
+    else:
+        return JsonResponse({"message": "Method not allowed"}, status=405)
+
+
+
+
+# def api_list_locations(request):
     """
     Lists the location names and the link to the location.
 
@@ -99,8 +185,75 @@ def api_list_locations(request):
     """
     return JsonResponse({})
 
+@require_http_methods(["GET", "POST", "PUT", "DELETE"])
+def api_list_locations(request, id=None):
+    if request.method == "GET":
+        # List all locations
+        locations = Location.objects.all()
+        return JsonResponse(
+            {"locations": locations},
+            encoder=LocationListEncoder,
+            safe=False,
+        )
 
-def api_show_location(request, id):
+    elif request.method == "POST":
+        # Create a new location
+        content = json.loads(request.body)
+        try:
+            # Convert state abbreviation to State object
+            state = State.objects.get(abbreviation=content["state"])
+            content["state"] = state
+        except State.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid state abbreviation"},
+                status=400,
+            )
+        location = Location.objects.create(**content)
+        return JsonResponse(
+            location,
+            encoder=LocationDetailEncoder,
+            safe=False,
+        )
+
+    elif request.method == "PUT":
+        # Update an existing location
+        if id is None:
+            return JsonResponse({"message": "Missing location ID"}, status=400)
+        content = json.loads(request.body)
+        try:
+            if "state" in content:
+                state = State.objects.get(abbreviation=content["state"])
+                content["state"] = state
+        except State.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid state abbreviation"},
+                status=400,
+            )
+        Location.objects.filter(id=id).update(**content)
+        location = Location.objects.get(id=id)
+        return JsonResponse(
+            location,
+            encoder=LocationDetailEncoder,
+            safe=False,
+        )
+
+    elif request.method == "DELETE":
+        # Delete a location
+        if id is None:
+            return JsonResponse({"message": "Missing location ID"}, status=400)
+        count, _ = Location.objects.filter(id=id).delete()
+        return JsonResponse({"deleted": count > 0})
+
+    else:
+        # HTTP method not allowed
+        return JsonResponse(
+            {"message": "Method not allowed"},
+            status=405,
+        )
+
+
+
+# def api_show_location(request, id):
     """
     Returns the details for the Location model specified
     by the id parameter.
@@ -118,3 +271,41 @@ def api_show_location(request, id):
     }
     """
     return JsonResponse({})
+
+
+@require_http_methods(["GET", "PUT", "DELETE"])
+def api_show_location(request, id):
+    # Try to get the location, or return a 404 if not found
+    try:
+        location = Location.objects.get(id=id)
+    except Location.DoesNotExist:
+        return JsonResponse({"message": "Location not found"}, status=404)
+
+    if request.method == "GET":
+        # Return the location details
+        return JsonResponse(location, encoder=LocationDetailEncoder, safe=False)
+
+    elif request.method == "PUT":
+        # Update the location
+        content = json.loads(request.body)
+        try:
+            # Handle state conversion if included
+            if "state" in content:
+                state = State.objects.get(abbreviation=content["state"])
+                content["state"] = state
+        except State.DoesNotExist:
+            return JsonResponse({"message": "Invalid state abbreviation"}, status=400)
+
+        for key, value in content.items():
+            setattr(location, key, value)
+        location.save()
+        return JsonResponse(location, encoder=LocationDetailEncoder, safe=False)
+
+    elif request.method == "DELETE":
+        # Delete the location
+        location.delete()
+        return JsonResponse({"deleted": True})
+
+    else:
+        # HTTP method not allowed
+        return JsonResponse({"message": "Method not allowed"}, status=405)

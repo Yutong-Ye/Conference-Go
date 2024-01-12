@@ -2,6 +2,7 @@ from django.db import models
 from django.urls import reverse
 
 
+
 class State(models.Model):
     """
     The State model represents a US state with its name
@@ -80,3 +81,5 @@ class Conference(models.Model):
 
     class Meta:
         ordering = ("starts", "name")  # Default ordering for Conference
+
+

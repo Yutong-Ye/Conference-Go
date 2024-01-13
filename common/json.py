@@ -1,6 +1,24 @@
 from json import JSONEncoder
+from django.db.models import QuerySet
+from datetime import date, datetime
 
-class ModelEncoder(JSONEncoder):
+
+class DateEncoder(JSONEncoder):
+    def default(self, o):
+        # If the object is a date or datetime, format it as a string
+        if isinstance(o, (date, datetime)):
+            return o.isoformat()
+        # For all other types, use the standard JSON encoding
+        return super().default(o)
+    
+class QuerySetEncoder(JSONEncoder):
+    def default(self, o):
+        if isinstance(o, QuerySet):
+            return list(o)
+        else:
+            return super().default(o)
+
+class ModelEncoder(DateEncoder, QuerySetEncoder, JSONEncoder):
     encoders = {}
 
     def default(self, o):

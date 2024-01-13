@@ -12,7 +12,7 @@
 
 -Eventually, you're going to want to allow vendors and sponsors to have places to set up their booths to show off their wares. However, that's a future feature that does not have to be in the MVP.
 
-**e.g ![Design] ![Reference image](/Picture/Conference_Design.png)**
+**e.g ![Domain-driven design] ![Reference image](/Picture/Conference_Design.png)**
 
 **Set up** 💻
 
@@ -105,7 +105,14 @@ It shows you how to create an Attendee, which is slightly different because it's
 It asks you to take what you've seen and apply it to the rest of the application.
 
 
+####Install Requests: How to? 
+-The requests library in Python is a popular and user-friendly HTTP library for sending HTTP requests.
+<https://requests.readthedocs.io/en/latest/user/install/#install>
+
+```python
+python -m pip install requests
+```
 
 
 #### Summary :smile:
-You can find the link of the project here <>
+You can find the link of the project here <https://github.com/Yutong-Ye/Conference-Go>
